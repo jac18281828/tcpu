@@ -12,6 +12,7 @@ int main(int argc, char* argv[]) {
     if(argc > 1) {
         for(int i=1; i<argc; i++) {
             pid_t pid = atoi(argv[i]);
+            printf("tid tidx tots totus totcpu\n");
             printtcpu(pid);
         }
 
@@ -29,11 +30,11 @@ void printtcpu(pid_t pid) {
     task_info_data_t taskinfo;
     mach_msg_type_number_t task_info_count;
 
-    kern_return_t kr;
+    kern_return_t kresult;
 
     task_info_count = TASK_INFO_MAX;
-    kr = task_info(port, TASK_BASIC_INFO, (task_info_t)taskinfo, &task_info_count);
-    if (kr == KERN_SUCCESS) {
+    kresult = task_info(port, TASK_BASIC_INFO, (task_info_t)taskinfo, &task_info_count);
+    if (kresult == KERN_SUCCESS) {
 
         thread_array_t thread_array;
         mach_msg_type_number_t thread_count;
@@ -41,8 +42,8 @@ void printtcpu(pid_t pid) {
         uint32_t stat_thread = 0; // Mach threads
 
         // get threads in the task
-        kr = task_threads(port, &thread_array, &thread_count);
-        if (kr != KERN_SUCCESS) {
+        kresult = task_threads(port, &thread_array, &thread_count);
+        if (kresult != KERN_SUCCESS) {
             perror("Unable to get threads for task");
             return;
         }
@@ -67,20 +68,23 @@ void printthread(thread_t threadid, task_info_data_t taskinfo) {
 
     thread_basic_info_t basic_info_th;
 
-    kern_return_t kr;
+    kern_return_t kresult;
 
     basic_info = (task_basic_info_t)taskinfo;
 
     thread_info_count = THREAD_INFO_MAX;
     
-    kr = thread_info(threadid, THREAD_BASIC_INFO, (thread_info_t)threadinfo, &thread_info_count);
-    if (kr != KERN_SUCCESS) {
+    kresult = thread_info(threadid, THREAD_BASIC_INFO, (thread_info_t)threadinfo, &thread_info_count);
+    if (kresult != KERN_SUCCESS) {
         perror("Unable to read thread info");
         return;
     }
     
     basic_info_th = (thread_basic_info_t)threadinfo;
 
+
+    // todo print out the percent cpu
+    
     long tot_sec = 0;
     long tot_usec = 0;
     long tot_cpu = 0;
