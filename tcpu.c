@@ -2,9 +2,12 @@
 #include <sys/types.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <assert.h>
 #include <mach/mach.h>
 
 static void printtcpu(pid_t pid);
+
+static void printtask(pid_t taskid, task_info_data_t taskinfo);
 
 static void printthread(thread_t threadid, task_info_data_t taskinfo);
 
@@ -12,7 +15,7 @@ int main(int argc, char* argv[]) {
     if(argc > 1) {
         for(int i=1; i<argc; i++) {
             pid_t pid = atoi(argv[i]);
-            printf("tid tidx tots totus totcpu\n");
+            printf("tid tidx time usage pcpu\n");
             printtcpu(pid);
         }
 
@@ -25,21 +28,24 @@ int main(int argc, char* argv[]) {
 
 void printtcpu(pid_t pid) {
     task_t port;
+    
     task_for_pid(mach_task_self(), pid, &port);
 
     task_info_data_t taskinfo;
+    
     mach_msg_type_number_t task_info_count;
 
     kern_return_t kresult;
 
     task_info_count = TASK_INFO_MAX;
+    
     kresult = task_info(port, TASK_BASIC_INFO, (task_info_t)taskinfo, &task_info_count);
     if (kresult == KERN_SUCCESS) {
 
+        printtask(pid, taskinfo);
+
         thread_array_t thread_array;
         mach_msg_type_number_t thread_count;
-
-        uint32_t stat_thread = 0; // Mach threads
 
         // get threads in the task
         kresult = task_threads(port, &thread_array, &thread_count);
@@ -47,17 +53,40 @@ void printtcpu(pid_t pid) {
             perror("Unable to get threads for task");
             return;
         }
-        if (thread_count > 0)
-            stat_thread += thread_count;
 
         for (int j = 0; j < thread_count; j++) {
             printthread(thread_array[j], taskinfo);
-        } 
+        }
+
+        kresult = vm_deallocate(mach_task_self(), (vm_offset_t)thread_array, thread_count * sizeof(thread_t));
+        assert(kresult == KERN_SUCCESS);
 
     }
 
 }
 
+
+void printtask(pid_t pid, task_info_data_t taskinfo) {
+
+    task_basic_info_t basic_taskinfo = (task_basic_info_t)taskinfo;
+
+        const int tot_usec =
+            basic_taskinfo->user_time.microseconds +
+            basic_taskinfo->system_time.microseconds;
+        
+        float tot_seconds =
+            basic_taskinfo->user_time.seconds +
+            basic_taskinfo->system_time.seconds +
+            tot_usec*1e-6;
+
+        printf("%d %x %f %d %f\n",
+               pid,
+               pid,
+               tot_seconds,
+               1,
+               0.0F);
+               
+}
 
 void printthread(thread_t threadid, task_info_data_t taskinfo) {
     task_basic_info_t basic_info;
@@ -82,22 +111,24 @@ void printthread(thread_t threadid, task_info_data_t taskinfo) {
     
     basic_info_th = (thread_basic_info_t)threadinfo;
 
+    int tid = (int)threadid;
 
-    // todo print out the percent cpu
-    
-    long tot_sec = 0;
-    long tot_usec = 0;
-    long tot_cpu = 0;
+    int thread_usec = 0;
+    float thread_sec = 0.0;
+    int thread_cpu = 0;
+    float cpu_pct = 0.0;
 
     if (!(basic_info_th->flags & TH_FLAGS_IDLE)) {
-        tot_sec = tot_sec + basic_info_th->user_time.seconds + basic_info_th->system_time.seconds;
-        tot_usec = tot_usec + basic_info_th->system_time.microseconds + basic_info_th->system_time.microseconds;
-        tot_cpu = tot_cpu + basic_info_th->cpu_usage;
+        thread_usec = basic_info_th->system_time.microseconds + basic_info_th->system_time.microseconds;
+        thread_sec = basic_info_th->user_time.seconds + basic_info_th->system_time.seconds + thread_usec*1e-6F;
 
-        long tid = (long)threadid;
+        thread_cpu = basic_info_th->cpu_usage;
 
-        printf("%ld %lx %ld %ld %ld\n", tid, tid, tot_sec, tot_usec, tot_cpu);
+        cpu_pct =(float)thread_cpu / (float)TH_USAGE_SCALE * 100.0;
+
     }
+
+    printf("%d %x %f %d %f\n", tid, tid, thread_sec, thread_cpu, cpu_pct);
+
     
 }
-
